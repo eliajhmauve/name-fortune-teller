@@ -1,26 +1,62 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { analyzeName, type NameAnalysis } from '@/lib/name-analyzer';
 import ScoreRing from '@/components/ScoreRing';
 import FiveGridChart from '@/components/FiveGridChart';
 import ShareCard from '@/components/ShareCard';
+import HistoryPanel, { type HistoryEntry } from '@/components/HistoryPanel';
+
+const HISTORY_KEY = 'name-score-history';
+
+const loadHistory = (): HistoryEntry[] => {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+};
+
+const saveHistory = (entries: HistoryEntry[]) => {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(0, 20)));
+};
 
 const Index = () => {
   const [name, setName] = useState('');
   const [result, setResult] = useState<NameAnalysis | null>(null);
   const [submittedName, setSubmittedName] = useState('');
   const [error, setError] = useState('');
+  const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
+
+  useEffect(() => { saveHistory(history); }, [history]);
+
+  const runAnalysis = (inputName: string) => {
+    const analysis = analyzeName(inputName);
+    setSubmittedName(inputName);
+    setResult(analysis);
+    // Add to history (avoid duplicates, most recent first)
+    setHistory(prev => {
+      const filtered = prev.filter(e => e.name !== inputName);
+      return [{ name: inputName, score: analysis.overallScore, keywords: analysis.keywords, timestamp: Date.now() }, ...filtered];
+    });
+  };
 
   const handleAnalyze = () => {
     const trimmed = name.trim();
-    // Validate: 2-4 Chinese characters
     if (!/^[\u4e00-\u9fff]{2,4}$/.test(trimmed)) {
       setError('請輸入 2-4 個中文字的姓名');
       return;
     }
     setError('');
-    setSubmittedName(trimmed);
-    setResult(analyzeName(trimmed));
+    runAnalysis(trimmed);
+  };
+
+  const handleHistorySelect = (histName: string) => {
+    setName(histName);
+    setError('');
+    runAnalysis(histName);
+  };
+
+  const handleClearHistory = () => {
+    setHistory([]);
   };
 
   const handleReset = () => {
@@ -48,7 +84,7 @@ const Index = () => {
 
       {/* Input */}
       <motion.div
-        className="w-full max-w-md mb-8"
+        className="w-full max-w-md mb-4"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.2 }}
@@ -75,6 +111,9 @@ const Index = () => {
         )}
       </motion.div>
 
+      {/* History */}
+      <HistoryPanel entries={history} onSelect={handleHistorySelect} onClear={handleClearHistory} />
+
       {/* Results */}
       <AnimatePresence mode="wait">
         {result && (
@@ -85,13 +124,11 @@ const Index = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            {/* Score Ring */}
             <div className="flex flex-col items-center mb-6">
               <p className="text-sm text-muted-foreground mb-1">綜合評分</p>
               <ScoreRing score={result.overallScore} />
             </div>
 
-            {/* Character Strokes */}
             <motion.div
               className="flex justify-center gap-6 mb-6"
               initial={{ opacity: 0 }}
@@ -106,7 +143,6 @@ const Index = () => {
               ))}
             </motion.div>
 
-            {/* Five Grid Breakdown */}
             <motion.div
               className="mb-6"
               initial={{ opacity: 0, y: 10 }}
@@ -119,7 +155,6 @@ const Index = () => {
               <FiveGridChart grids={result.grids} />
             </motion.div>
 
-            {/* Keywords */}
             <motion.div
               className="mb-6"
               initial={{ opacity: 0, y: 10 }}
@@ -141,7 +176,6 @@ const Index = () => {
               </div>
             </motion.div>
 
-            {/* Summary */}
             <motion.div
               className="mb-4 p-5 rounded-xl bg-card border border-gold"
               initial={{ opacity: 0, y: 10 }}
@@ -156,10 +190,8 @@ const Index = () => {
               </p>
             </motion.div>
 
-            {/* Share */}
             <ShareCard analysis={result} name={submittedName} />
 
-            {/* Reset */}
             <motion.div
               className="text-center mt-6"
               initial={{ opacity: 0 }}
@@ -177,7 +209,6 @@ const Index = () => {
         )}
       </AnimatePresence>
 
-      {/* Footer */}
       <div className="mt-auto pt-8 text-center text-xs text-muted-foreground/60">
         僅供娛樂參考，命運掌握在自己手中 ✨
       </div>
